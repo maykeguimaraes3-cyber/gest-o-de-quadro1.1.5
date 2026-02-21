@@ -1,1 +1,10 @@
-Permission denied
+{
+  "name": "Gestão de Quadro",
+  "description": "Enterprise-grade system for managing production groups, off-cycles, and technical cleaning optimization for primary packaging sectors.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "requestPermissions": [
+    "notifications"
+  ]
+}

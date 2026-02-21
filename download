@@ -1,0 +1,208 @@
+
+import React, { useState, useMemo } from 'react';
+import { ClipboardCheck, Download, Filter, UserCheck, AlertCircle, Share2 } from 'lucide-react';
+import { Employee, EmployeeStatus, EmployeeRole } from '../types';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+interface TechnicalCleaningProps {
+  employees: Employee[];
+  sectorName: string;
+  responsibleName: string;
+  notify: (msg: string, type?: 'success' | 'info' | 'error') => void;
+}
+
+const TechnicalCleaning: React.FC<TechnicalCleaningProps> = ({ employees, sectorName, responsibleName, notify }) => {
+  const [offGroups, setOffGroups] = useState<number[]>([]);
+  const [roleFilter, setRoleFilter] = useState<string>('All');
+
+  const workingStaff = useMemo(() => {
+    return employees.filter(emp => 
+      !offGroups.includes(emp.group) && 
+      emp.status === EmployeeStatus.TRABALHANDO &&
+      (roleFilter === 'All' || emp.role === roleFilter)
+    );
+  }, [employees, offGroups, roleFilter]);
+
+  const toggleGroup = (group: number) => {
+    setOffGroups(prev => prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]);
+  };
+
+  const handleExportPDF = async () => {
+    try {
+      const doc = new jsPDF();
+      const date = new Date().toLocaleDateString('pt-BR');
+      const filename = `limpeza_tecnica_${date.replace(/\//g, '-')}.pdf`;
+      
+      // Header section
+      doc.setFontSize(20);
+      doc.setTextColor(37, 99, 235);
+      doc.text('Relatório de Limpeza Técnica', 14, 22);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(`Setor: ${sectorName}`, 14, 30);
+      doc.text(`Responsável: ${responsibleName}`, 14, 35);
+      doc.text(`Grupos de Folga: ${offGroups.length > 0 ? offGroups.sort().join(', ') : 'Nenhum'}`, 14, 40);
+      doc.text(`Total Ativos: ${workingStaff.length}`, 14, 45);
+
+      // Table data
+      const tableData = workingStaff.map(emp => [
+        emp.registration,
+        emp.name,
+        emp.role,
+        `G${emp.group}`
+      ]);
+
+      autoTable(doc, {
+        startY: 55,
+        head: [['Matrícula', 'Nome', 'Função', 'Grupo']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [37, 99, 235], textColor: 255 },
+        styles: { fontSize: 9, cellPadding: 3 },
+        columnStyles: {
+          0: { cellWidth: 30 },
+          3: { cellWidth: 20, halign: 'center' }
+        },
+        didDrawPage: (data) => {
+          doc.setFontSize(8);
+          doc.setTextColor(150);
+          doc.text('© 2026 M.Guimarães - Gestão de Quadro', data.settings.margin.left, doc.internal.pageSize.height - 10);
+        }
+      });
+
+      const pdfBlob = doc.output('blob');
+      const file = new window.File([pdfBlob], filename, { type: 'application/pdf' });
+
+      if (window.navigator.share) {
+        await window.navigator.share({
+          files: [file],
+          title: 'Relatório Limpeza Técnica',
+          text: `Equipe ativa para o setor ${sectorName}`
+        });
+        notify('Relatório compartilhado');
+      } else {
+        doc.save(filename);
+        notify('Relatório baixado');
+      }
+    } catch (error) {
+      console.error(error);
+      notify('Erro ao exportar PDF', 'error');
+    }
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div className="bg-blue-600 p-8 rounded-3xl text-white shadow-xl shadow-blue-500/20 relative overflow-hidden">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <h2 className="text-3xl font-bold">Cálculo de Limpeza Técnica</h2>
+            <p className="text-blue-100 max-w-xl">
+              Selecione os grupos que estarão de folga hoje para visualizar a lista exata de quem estará disponível para o trabalho.
+            </p>
+          </div>
+          <div className="flex gap-4">
+             <div className="bg-white/10 backdrop-blur-md px-6 py-4 rounded-2xl border border-white/20">
+                <p className="text-xs font-bold uppercase tracking-wider mb-1">Disponíveis</p>
+                <p className="text-3xl font-bold">{workingStaff.length}</p>
+             </div>
+          </div>
+        </div>
+        <ClipboardCheck className="absolute -right-8 -bottom-8 w-48 h-48 opacity-10 rotate-12" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <div className="lg:col-span-1 space-y-6">
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+            <h3 className="font-bold mb-4 flex items-center gap-2 text-slate-800 dark:text-white">
+              <AlertCircle size={18} className="text-blue-600" />
+              Grupos em Folga
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {[1, 2, 3, 4, 5, 6, 7].map(g => (
+                <button
+                  key={g}
+                  onClick={() => toggleGroup(g)}
+                  className={`w-10 h-10 rounded-xl font-bold transition-all border ${
+                    offGroups.includes(g) 
+                      ? 'bg-rose-600 border-rose-600 text-white shadow-lg shadow-rose-900/20 scale-110' 
+                      : 'bg-slate-50 dark:bg-slate-700 text-slate-400 border-slate-200 dark:border-slate-600 hover:border-rose-400'
+                  }`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-slate-400 mt-4 uppercase font-bold">Clique para marcar como folga</p>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+            <h3 className="font-bold mb-4 flex items-center gap-2 text-slate-800 dark:text-white">
+              <Filter size={18} className="text-blue-600" />
+              Filtrar por Função
+            </h3>
+            <select 
+              className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-3 outline-none text-slate-800 dark:text-white"
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+            >
+              <option value="All">Todos</option>
+              {Object.values(EmployeeRole).map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="lg:col-span-3">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
+            <div className="p-4 bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <UserCheck size={18} className="text-emerald-500" />
+                <span className="font-bold text-slate-700 dark:text-slate-300">Staff em Atividade</span>
+              </div>
+              <button 
+                onClick={handleExportPDF}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"
+              >
+                <Share2 size={14} /> COMPARTILHAR PDF
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="text-xs uppercase bg-slate-50 dark:bg-slate-800/80 font-bold text-slate-500">
+                  <tr>
+                    <th className="px-6 py-4">Matrícula</th>
+                    <th className="px-6 py-4">Nome</th>
+                    <th className="px-6 py-4">Função</th>
+                    <th className="px-6 py-4">Grupo</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                  {workingStaff.map(emp => (
+                    <tr key={emp.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                      <td className="px-6 py-4 font-mono text-sm text-slate-500">{emp.registration}</td>
+                      <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">{emp.name}</td>
+                      <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{emp.role}</td>
+                      <td className="px-6 py-4">
+                        <span className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-2 py-1 rounded text-xs font-bold border border-emerald-200 dark:border-emerald-800">G{emp.group}</span>
+                      </td>
+                    </tr>
+                  ))}
+                  {workingStaff.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
+                        Nenhum funcionário ativo para os filtros selecionados.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default TechnicalCleaning;
